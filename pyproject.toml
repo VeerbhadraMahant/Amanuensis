@@ -1,0 +1,22 @@
+[project]
+name = "amanuensis"
+version = "0.1.0"
+description = "Personal real-time multilingual speech-to-text that adapts to one speaker"
+authors = [
+    { name = "Veerbhadra", email = "mahantveerbhadra596@gmail.com" }
+]
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "faster-whisper>=1.2.1",
+    "jiwer>=4.0.0",
+    "pyyaml>=6.0.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

@@ -1,0 +1,7 @@
+eval_dir: data/eval_frozen
+manifest: data/eval_frozen/manifest.json
+manifest_hash_file: data/eval_frozen/manifest.sha256
+variants_file: null   # set once docs/romanization.md exists and a variant map is derived from it
+models: [small, medium, large-v3-turbo]
+compute_type: int8
+language: en          # ADR-002: English token for non-German speech
