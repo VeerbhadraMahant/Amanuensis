@@ -1,0 +1,12 @@
+# Improvement loop. Values here are operational limits, not promotion thresholds (those are owner-only
+# in configs/promotion.yaml). Defaults are untuned.
+new_reviewed_threshold: 200   # newly reviewed utterances since the last dataset that trigger a run
+step_budget: 40               # max tool/steps per run; exceeding it stops the run cleanly
+wall_clock_budget_s: 14400
+oom_retries: 2                # on out-of-memory: halve batch_size, double grad_accum, up to this many times
+baseline_model: small         # evaluated as "champion" until a model has been promoted
+reports_dir: data/loop_reports
+latency_clips: 10
+parity_clips: 5
+agent_model: sonnet
+agent_max_budget_usd: 5.0     # API spend cap for one agent-driven run

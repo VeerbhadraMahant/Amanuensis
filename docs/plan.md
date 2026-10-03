@@ -112,13 +112,13 @@ Start this phase once you have roughly 2 to 3 hours of reviewed speech. Expect c
 
 **Why:** Now the tools are trusted, so the agent layer can focus on orchestration, delegation, failure recovery, and reporting. This is the main multi-agent learning phase.
 
-- [ ] Read the current Claude Agent SDK docs on subagents, tool definitions, and permissions before writing anything; note anything that changed since this plan was written
-- [ ] Wrap Phase 4 functions as tools with narrow signatures; no tool exposes raw audio or write access to eval data or promotion config
-- [ ] Implement specialists one at a time, each tested alone before being added to the orchestrator: Evaluator first (read-mostly, safest), then Curator, Trainer, Lexicographer, Gatekeeper
-- [ ] Orchestrator with step budget, wall-clock budget, retry policy, and run report
-- [ ] Failure injection tests: corrupt an audio file, force an out-of-memory, break the conversion step, tamper with the eval manifest hash; confirm the loop detects each and stops or recovers correctly
-- [ ] Owner approval step for promotion, surfaced in the correction UI
-- [ ] Run three or more full loop cycles on real data; compare agent runs with your Phase 4 manual runs
+- [x] Read the current Claude Agent SDK docs on subagents, tool definitions, and permissions before writing anything; note anything that changed since this plan was written — read 2026-10-03 (claude-agent-sdk 0.2.163). Changes vs this plan: AgentDefinition fields are camelCase; the delegation tool is named 'Agent' (shown as 'Task' in the init list); subagents run in the background by default (we set background=False); tools=[] / tools=['Agent'] removes built-ins; max_budget_usd and depth/concurrency env caps exist; ToolPermissionContext.agent_id is None for the main agent, which lets can_use_tool block the orchestrator from specialist tools.
+- [x] Wrap Phase 4 functions as tools with narrow signatures; no tool exposes raw audio or write access to eval data or promotion config — loop/tools.py: closed set of 12 tools; none takes a path, threshold or audio; none returns audio paths; passing the gate only queues owner approval. test_agents pins the tool set and these properties.
+- [ ] Implement specialists one at a time, each tested alone before being added to the orchestrator: Evaluator first (read-mostly, safest), then Curator, Trainer, Lexicographer, Gatekeeper — DEFINED (loop/agents.py) with per-role tool lists and prompts, but NOT run against a live model: each specialist has not been tested alone, and the Evaluator-first rollout this item describes has not happened. Needs an API run by the owner.
+- [x] Orchestrator with step budget, wall-clock budget, retry policy, and run report — LoopRun enforces step + wall-clock budgets and logs every step to loop_runs.steps for scripts and agents alike; OOM retry halves batch / doubles accumulation; run report in Markdown. The plain-script pipeline (loop/pipeline.py) is the reference and needs no agents.
+- [x] Failure injection tests: corrupt an audio file, force an out-of-memory, break the conversion step, tamper with the eval manifest hash; confirm the loop detects each and stops or recovers correctly — tests/test_loop.py (22 tests): OOM retry and persistent OOM, conversion break, tampered eval audio and manifest, eval audio inside the training pool, corrupt and missing audio, dictation active, unset thresholds, step and wall-clock budget, no data. Mutation-checked: removing the hash check or the leak guard turns the right tests red.
+- [x] Owner approval step for promotion, surfaced in the correction UI — registry/approvals.py + promotion_requests table + Approvals page in the correction UI (API tested; page not exercised in a browser).
+- [ ] Run three or more full loop cycles on real data; compare agent runs with your Phase 4 manual runs — needs real reviewed data and a live agent run.
 
 **Exit:** the loop runs end to end from a trigger, produces a readable report, refuses bad data and bad models, and survives injected failures.
 

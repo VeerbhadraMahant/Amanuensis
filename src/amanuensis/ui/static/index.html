@@ -40,7 +40,7 @@
 <main>
   <header>
     <h1>Amanuensis review <span id="remaining" class="meta"></span></h1>
-    <nav><a id="nav-review" href="#review">Review</a><a id="nav-stats" href="#stats">Stats</a><a id="nav-lexicon" href="#lexicon">Lexicon</a></nav>
+    <nav><a id="nav-review" href="#review">Review</a><a id="nav-stats" href="#stats">Stats</a><a id="nav-lexicon" href="#lexicon">Lexicon</a><a id="nav-approvals" href="#approvals">Approvals</a></nav>
   </header>
 
   <section id="review" class="card" hidden>
@@ -72,6 +72,11 @@
     </form>
     <div id="lex-msg" role="alert" class="meta"></div>
     <table id="lex-table"></table>
+  </section>
+
+  <section id="approvals" class="card" hidden>
+    <div class="meta">A model that passed every promotion gate is waiting for your decision. Nothing is promoted without it.</div>
+    <div id="appr-list"></div>
   </section>
 
   <section id="stats" class="card" hidden>
@@ -119,11 +124,12 @@ function updateSaveLabel() {
 function show() {
   $("remaining").textContent = queue.length ? `${queue.length} to review` : "";
   const have = queue.length > 0;
-  const other = location.hash === "#stats" || location.hash === "#lexicon";
+  const other = ["#stats", "#lexicon", "#approvals"].includes(location.hash);
   $("review").hidden = !have || other;
   $("empty").hidden = have || other;
   $("stats").hidden = location.hash !== "#stats";
   $("lexicon").hidden = location.hash !== "#lexicon";
+  $("approvals").hidden = location.hash !== "#approvals";
   if (!have) { current = null; return; }
   current = queue[0];
   $("meta").textContent = `#${current.id} · ${current.duration_s.toFixed(1)} s · ${current.created_at}`;
@@ -192,7 +198,7 @@ const skip = () => { if (queue.length > 1) { queue.push(queue.shift()); show(); 
 const replay = () => { $("player").currentTime = 0; $("player").play().catch(() => {}); };
 
 document.addEventListener("keydown", (e) => {
-  if (location.hash === "#stats" || location.hash === "#lexicon") return;
+  if (["#stats", "#lexicon", "#approvals"].includes(location.hash)) return;
   if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.ctrlKey) { e.preventDefault(); submit(); }
   else if (e.altKey && e.key.toLowerCase() === "r") { e.preventDefault(); reject(); }
   else if (e.altKey && e.key.toLowerCase() === "p") { e.preventDefault(); replay(); }
@@ -247,7 +253,25 @@ $("lex-form").addEventListener("submit", async (ev) => {
   } catch (e) { $("lex-msg").textContent = e.message; }
 });
 
+async function renderApprovals() {
+  const box = $("appr-list");
+  box.replaceChildren();
+  const items = await api("/api/approvals");
+  if (!items.length) { box.textContent = "No promotions waiting."; return; }
+  items.forEach((it) => {
+    const d = document.createElement("div");
+    d.className = "row";
+    const t = document.createElement("span");
+    t.textContent = `${it.model_version}: ${it.decision.reasons.join("; ")}`;
+    const mk = (label, path, cls) => { const b = document.createElement("button"); b.type = "button"; b.className = cls || ""; b.textContent = label;
+      b.onclick = async () => { await api(path, "POST"); renderApprovals(); }; return b; };
+    d.append(t, mk("Approve", `/api/approvals/${it.id}/approve`, "primary"), mk("Decline", `/api/approvals/${it.id}/decline`, "danger"));
+    box.append(d);
+  });
+}
+
 async function route() {
+  if (location.hash === "#approvals") await renderApprovals();
   if (location.hash === "#stats") await renderStats();
   if (location.hash === "#lexicon") await renderLexicon();
   show();

@@ -44,6 +44,14 @@ MIGRATIONS = [
         steps TEXT NOT NULL DEFAULT '[]', outcome TEXT, report_path TEXT
     );
     """,
+    """
+    CREATE TABLE promotion_requests (
+        id INTEGER PRIMARY KEY, model_version TEXT NOT NULL REFERENCES model_versions(version),
+        decision TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending'
+            CHECK (status IN ('pending', 'approved', 'declined')),
+        created_at TEXT NOT NULL, decided_at TEXT
+    );
+    """,
 ]
 
 

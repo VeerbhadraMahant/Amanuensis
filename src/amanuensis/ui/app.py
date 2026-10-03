@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from amanuensis.config import load_language_tags, load_paths, load_variants
+from amanuensis.registry import approvals
 from amanuensis.store import db, lexicon, review
 from amanuensis.text.spelling import check_spelling
 
@@ -106,6 +107,20 @@ def create_app(conn: sqlite3.Connection, audio_dir: Path, tags: list[str], varia
     @app.post("/api/lexicon/{entry_id}/delete")
     async def lexicon_delete(entry_id: int):
         guarded(lexicon.delete_entry, conn, entry_id)
+        return {"ok": True}
+
+    @app.get("/api/approvals")
+    async def approvals_pending():
+        return approvals.pending(conn)
+
+    @app.post("/api/approvals/{request_id}/approve")
+    async def approvals_approve(request_id: int):
+        guarded(approvals.approve, conn, request_id)
+        return {"ok": True}
+
+    @app.post("/api/approvals/{request_id}/decline")
+    async def approvals_decline(request_id: int):
+        guarded(approvals.decline, conn, request_id)
         return {"ok": True}
 
     @app.get("/api/stats")

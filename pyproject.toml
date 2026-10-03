@@ -7,6 +7,7 @@ authors = [
 ]
 requires-python = ">=3.11,<3.12"
 dependencies = [
+    "claude-agent-sdk>=0.2.163",
     "fastapi>=0.142.2",
     "faster-whisper>=1.2.1",
     "jiwer>=4.0.0",

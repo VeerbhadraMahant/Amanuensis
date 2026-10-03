@@ -82,10 +82,14 @@ def build_dataset(
     kept, seen_audio, seen_text = [], set(), set()
     for r in rows:
         path = audio_dir / r["audio_path"]
-        digest = sha256_file(path)
-        if digest in eval_hashes:
-            raise EvalLeakError(f"utterance {r['id']} has the same audio as an item in the frozen eval set")
-        audio = read_wav(path)
+        try:
+            digest = sha256_file(path)
+            if digest in eval_hashes:
+                raise EvalLeakError(f"utterance {r['id']} has the same audio as an item in the frozen eval set")
+            audio = read_wav(path)
+        except (OSError, EOFError, wave.Error) as e:  # missing or corrupt file: reject this utterance only
+            result.rejected.append((r["id"], [f"unreadable audio ({type(e).__name__})"]))
+            continue
         problems = validate(r["final_text"], audio, r["duration_s"], vcfg, variants)
         if problems:
             result.rejected.append((r["id"], problems))
