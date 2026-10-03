@@ -75,10 +75,10 @@ Dictate real things daily (notes, messages, project logs) for 15 to 30 minutes a
 
 **Why:** Names and terms are cheaper to fix with biasing than with training. This also sets a stronger baseline that fine-tuning must beat.
 
-- [ ] Lexicon table and UI to add, edit, and approve entries
-- [ ] Prompt biasing with lexicon terms in the decoding prompt (owner: `realtime-audio-engineer`)
-- [ ] Normalizer rules for lexicon casing and known variants (owner: `eval-engineer`)
-- [ ] Measure lexicon term accuracy and overall WER with and without biasing on the eval set
+- [x] Lexicon table and UI to add, edit, and approve entries — store/lexicon.py + /api/lexicon + Lexicon page. Owner entries are approved at once; proposals stay pending and never reach prompts or casing. Learned: the lowercase variant 'pccoe' for canonical 'PCCOE' must be kept, only an exact-canonical variant is redundant.
+- [x] Prompt biasing with lexicon terms in the decoding prompt (owner: `realtime-audio-engineer`) — Streamer._prompt = approved terms (capped by max_prompt_terms in configs/streaming.yaml) + trimmed context; terms are re-read each decode so UI edits apply live.
+- [x] Normalizer rules for lexicon casing and known variants (owner: `eval-engineer`) — canonicalize() applies approved-lexicon variants and casing at logging time; check_spelling uses the same map (exact-case match, so a correctly cased term is not flagged).
+- [ ] Measure lexicon term accuracy and overall WER with and without biasing on the eval set — harness + CLI done (`python -m amanuensis.eval.biasing`), tested with a fake decoder. NOT RUN on the eval set (does not exist yet). Sanity check: 0/5/20/26 irrelevant terms in the prompt gave identical output and WER 0.0 on one TTS clip.
 
 **Exit:** measured improvement on lexicon term accuracy; new "biased baseline" recorded.
 

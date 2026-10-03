@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from amanuensis.config import load_language_tags, load_paths, load_variants
-from amanuensis.store import db, review
+from amanuensis.store import db, lexicon, review
 from amanuensis.text.spelling import check_spelling
 
 STATIC = Path(__file__).parent / "static"
@@ -27,12 +27,18 @@ class SpellBody(BaseModel):
     text: str
 
 
+class LexiconBody(BaseModel):
+    canonical: str
+    variants: list[str] = []
+    kind: str
+
+
 def create_app(conn: sqlite3.Connection, audio_dir: Path, tags: list[str], variants: dict[str, str]) -> FastAPI:
     # Endpoints are async on purpose: they run on the single event-loop thread, so the shared
     # sqlite connection is never used concurrently.
     app = FastAPI(title="Amanuensis correction UI")
 
-    def guarded(fn, *args):
+    def guarded(fn, *args):  # KeyError -> 404, ValueError -> 422
         try:
             return fn(*args)
         except KeyError:
@@ -77,7 +83,30 @@ def create_app(conn: sqlite3.Connection, audio_dir: Path, tags: list[str], varia
 
     @app.post("/api/spellcheck")
     async def spellcheck(body: SpellBody):
-        return [asdict(f) for f in check_spelling(body.text, variants)]
+        return [asdict(f) for f in check_spelling(body.text, {**variants, **lexicon.variant_map(conn)})]
+
+    @app.get("/api/lexicon")
+    async def lexicon_list():
+        return lexicon.list_entries(conn)
+
+    @app.post("/api/lexicon")
+    async def lexicon_add(body: LexiconBody):
+        return {"id": guarded(lexicon.add_entry, conn, body.canonical, body.variants, body.kind)}
+
+    @app.post("/api/lexicon/{entry_id}/update")
+    async def lexicon_update(entry_id: int, body: LexiconBody):
+        guarded(lexicon.update_entry, conn, entry_id, body.canonical, body.variants, body.kind)
+        return {"ok": True}
+
+    @app.post("/api/lexicon/{entry_id}/approve")
+    async def lexicon_approve(entry_id: int):
+        guarded(lexicon.set_approved, conn, entry_id, True)
+        return {"ok": True}
+
+    @app.post("/api/lexicon/{entry_id}/delete")
+    async def lexicon_delete(entry_id: int):
+        guarded(lexicon.delete_entry, conn, entry_id)
+        return {"ok": True}
 
     @app.get("/api/stats")
     async def stats():

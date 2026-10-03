@@ -8,3 +8,4 @@ min_silence_s: 0.6      # silence that closes an utterance
 redecode_interval_s: 0.7
 max_buffer_s: 20.0
 prompt_chars: 200
+max_prompt_terms: 20   # 0 disables lexicon biasing; tune with eval/biasing.py

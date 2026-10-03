@@ -38,8 +38,10 @@ class Streamer:
         sink: Callable[[Update], None],
         stats: LatencyStats | None = None,
         on_utterance: Callable[[np.ndarray, str, float | None], None] | None = None,
+        bias_terms: Callable[[], list[str]] | None = None,
     ) -> None:
         self._engine, self._seg, self._cfg, self._sink = engine, segmenter, cfg, sink
+        self._bias_terms = bias_terms  # called per decode so lexicon edits apply without a restart
         self._on_utterance = on_utterance  # (audio, raw text, median commit latency ms) per closed utterance
         self.stats = stats or LatencyStats()
         self.utterances: list[str] = []
@@ -83,11 +85,17 @@ class Streamer:
 
     def _decode(self) -> tuple[list[Word], float]:
         t0 = time.perf_counter()
-        words = self._engine.transcribe(self._buf, self._context[-self._cfg.prompt_chars :] or None)
+        words = self._engine.transcribe(self._buf, self._prompt())
         dt = time.perf_counter() - t0
         self.stats.decode_s.append(dt)
         offset = self._buf_start / SAMPLE_RATE
         return [Word(w.text, w.start + offset, w.end + offset) for w in words], dt
+
+    def _prompt(self) -> str | None:
+        """Lexicon terms first, then context. The context never holds text still in the buffer."""
+        terms = (self._bias_terms() if self._bias_terms else [])[: self._cfg.max_prompt_terms]
+        head = ", ".join(terms) + ". " if terms else ""
+        return (head + self._context[-self._cfg.prompt_chars :]).strip() or None
 
     def _cycle(self) -> None:
         words, dt = self._decode()

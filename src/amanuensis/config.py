@@ -19,6 +19,7 @@ class StreamingConfig:
     redecode_interval_s: float
     max_buffer_s: float
     prompt_chars: int
+    max_prompt_terms: int  # lexicon terms put in the decoding prompt; too many invites hallucination
 
 
 def load_streaming(path: Path = Path("configs/streaming.yaml")) -> StreamingConfig:

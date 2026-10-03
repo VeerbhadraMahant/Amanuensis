@@ -21,6 +21,7 @@ def cfg(**kw) -> StreamingConfig:
     base = dict(
         model="x", device="cpu", compute_type="int8", cpu_fallback_model="x", language="en",
         vad_threshold=0.5, min_silence_s=0.6, redecode_interval_s=0.7, max_buffer_s=20.0, prompt_chars=200,
+        max_prompt_terms=20,
     )
     return StreamingConfig(**{**base, **kw})
 

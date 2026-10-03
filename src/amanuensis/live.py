@@ -10,7 +10,7 @@ from amanuensis.audio.vad import SileroProb, VadSegmenter
 from amanuensis.config import SAMPLE_RATE, WINDOW, load_paths, load_streaming, load_variants
 from amanuensis.logging import log
 from amanuensis.output.overlay import Overlay
-from amanuensis.store import db, sessions
+from amanuensis.store import db, lexicon, sessions
 from amanuensis.text.normalizer import canonicalize
 
 
@@ -19,16 +19,19 @@ def main() -> None:
     paths = load_paths()
     conn = db.connect(paths.db_path, check_same_thread=False)
     session_id = sessions.start_session(conn, f"base:{cfg.model}", "live")
-    variants = load_variants(paths.variants_file)
+    static_variants = load_variants(paths.variants_file)
     engine = FasterWhisperEngine(cfg)
     overlay = Overlay("CPU fallback: reduced accuracy" if engine.fallback else "")
     ring = RingBuffer(30 * SAMPLE_RATE)
     seg = VadSegmenter(SileroProb(), cfg.vad_threshold, cfg.min_silence_s)
 
     def on_utterance(audio, raw, latency_ms) -> None:
-        sessions.log_utterance(conn, paths.audio_dir, session_id, audio, raw, canonicalize(raw, variants), latency_ms)
+        variants = {**static_variants, **lexicon.variant_map(conn)}
+        normalized = canonicalize(raw, variants, lexicon.approved_terms(conn))
+        sessions.log_utterance(conn, paths.audio_dir, session_id, audio, raw, normalized, latency_ms)
 
-    streamer = Streamer(engine, seg, cfg, overlay.push, on_utterance=on_utterance)
+    streamer = Streamer(engine, seg, cfg, overlay.push, on_utterance=on_utterance,
+                        bias_terms=lambda: lexicon.approved_terms(conn))
     stop = threading.Event()
 
     def worker() -> None:

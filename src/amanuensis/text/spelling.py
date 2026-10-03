@@ -18,6 +18,6 @@ def check_spelling(text: str, variants: dict[str, str]) -> list[SpellingFlag]:
     flags = []
     for m in _WORD.finditer(text):
         canonical = variants.get(m.group(0).lower())
-        if canonical is not None and canonical != m.group(0).lower():
+        if canonical is not None and canonical != m.group(0):  # casing is part of the canonical form
             flags.append(SpellingFlag(m.group(0), canonical, m.start(), m.end()))
     return flags

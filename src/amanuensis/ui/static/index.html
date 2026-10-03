@@ -30,6 +30,7 @@
   #flags button { padding:0 6px; margin-left:4px; font-size:13px; }
   #msg { min-height:22px; color:var(--bad); font-size:14px; }
   audio { width:100%; }
+  input, select { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--fg); }
   table { border-collapse:collapse; width:100%; }
   td, th { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
   .hint { color:var(--muted); font-size:13px; margin-top:12px; }
@@ -39,7 +40,7 @@
 <main>
   <header>
     <h1>Amanuensis review <span id="remaining" class="meta"></span></h1>
-    <nav><a id="nav-review" href="#review">Review</a><a id="nav-stats" href="#stats">Stats</a></nav>
+    <nav><a id="nav-review" href="#review">Review</a><a id="nav-stats" href="#stats">Stats</a><a id="nav-lexicon" href="#lexicon">Lexicon</a></nav>
   </header>
 
   <section id="review" class="card" hidden>
@@ -61,6 +62,17 @@
   </section>
 
   <section id="empty" class="card" hidden>Nothing left to review. Dictate some more, then reload.</section>
+
+  <section id="lexicon" class="card" hidden>
+    <form id="lex-form" class="row">
+      <input id="lex-canonical" placeholder="canonical (e.g. PCCOE)" required aria-label="Canonical spelling">
+      <input id="lex-variants" placeholder="variants, comma separated" aria-label="Variants">
+      <select id="lex-kind" aria-label="Kind"><option>name</option><option>term</option><option>romanized_word</option></select>
+      <button class="primary" type="submit">Add</button>
+    </form>
+    <div id="lex-msg" role="alert" class="meta"></div>
+    <table id="lex-table"></table>
+  </section>
 
   <section id="stats" class="card" hidden>
     <table id="stats-table"></table>
@@ -107,9 +119,11 @@ function updateSaveLabel() {
 function show() {
   $("remaining").textContent = queue.length ? `${queue.length} to review` : "";
   const have = queue.length > 0;
-  $("review").hidden = !have || location.hash === "#stats";
-  $("empty").hidden = have || location.hash === "#stats";
+  const other = location.hash === "#stats" || location.hash === "#lexicon";
+  $("review").hidden = !have || other;
+  $("empty").hidden = have || other;
   $("stats").hidden = location.hash !== "#stats";
+  $("lexicon").hidden = location.hash !== "#lexicon";
   if (!have) { current = null; return; }
   current = queue[0];
   $("meta").textContent = `#${current.id} · ${current.duration_s.toFixed(1)} s · ${current.created_at}`;
@@ -178,7 +192,7 @@ const skip = () => { if (queue.length > 1) { queue.push(queue.shift()); show(); 
 const replay = () => { $("player").currentTime = 0; $("player").play().catch(() => {}); };
 
 document.addEventListener("keydown", (e) => {
-  if (location.hash === "#stats") return;
+  if (location.hash === "#stats" || location.hash === "#lexicon") return;
   if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.ctrlKey) { e.preventDefault(); submit(); }
   else if (e.altKey && e.key.toLowerCase() === "r") { e.preventDefault(); reject(); }
   else if (e.altKey && e.key.toLowerCase() === "p") { e.preventDefault(); replay(); }
@@ -205,8 +219,37 @@ async function renderStats() {
   langs.forEach(([k, v]) => add(`Reviewed hours: ${k}`, v.toFixed(3)));
 }
 
+async function renderLexicon() {
+  const t = $("lex-table");
+  t.replaceChildren();
+  const head = t.insertRow();
+  ["Canonical", "Variants", "Kind", "Source", ""].forEach((h) => { const c = document.createElement("th"); c.textContent = h; head.append(c); });
+  (await api("/api/lexicon")).forEach((e) => {
+    const r = t.insertRow();
+    r.insertCell().textContent = e.canonical;
+    r.insertCell().textContent = e.variants.join(", ");
+    r.insertCell().textContent = e.kind;
+    r.insertCell().textContent = e.approved ? e.source : `${e.source} (pending)`;
+    const cell = r.insertCell();
+    const mk = (label, fn) => { const b = document.createElement("button"); b.type = "button"; b.textContent = label; b.onclick = async () => { await fn(); renderLexicon(); }; cell.append(b, " "); };
+    if (!e.approved) mk("approve", () => api(`/api/lexicon/${e.id}/approve`, "POST"));
+    mk("delete", () => api(`/api/lexicon/${e.id}/delete`, "POST"));
+  });
+}
+
+$("lex-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  try {
+    await api("/api/lexicon", "POST", { canonical: $("lex-canonical").value, kind: $("lex-kind").value,
+      variants: $("lex-variants").value.split(",") });
+    $("lex-canonical").value = ""; $("lex-variants").value = ""; $("lex-msg").textContent = "";
+    renderLexicon();
+  } catch (e) { $("lex-msg").textContent = e.message; }
+});
+
 async function route() {
   if (location.hash === "#stats") await renderStats();
+  if (location.hash === "#lexicon") await renderLexicon();
   show();
 }
 window.addEventListener("hashchange", route);
