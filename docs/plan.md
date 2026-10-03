@@ -138,12 +138,12 @@ Start this phase once you have roughly 2 to 3 hours of reviewed speech. Expect c
 
 ## Track A: from-scratch study (parallel, independent)
 
-- [ ] Log-mel feature pipeline from raw audio, implemented by hand
-- [ ] Small CTC model trained on a LibriSpeech subset
-- [ ] Greedy CTC decoding, then a small beam search
-- [ ] WER vs training hours curve (e.g. 10, 25, 50, 100 hours)
-- [ ] Evaluate on your English eval slice and compare with base and fine-tuned Whisper
-- [ ] Write up the comparison
+- [x] Log-mel feature pipeline from raw audio, implemented by hand — trackA/features.py, hand-written (STFT, mel filterbank, log). Cross-checked against Whisper's extractor: per-frame energy correlates and frame timing aligns; per-bin comparison is meaningless because Whisper's filterbank differs.
+- [x] Small CTC model trained on a LibriSpeech subset — conv + BiGRU (1.4 M params) trained on 10 h and 25 h of train-clean-100. Learned: the transformer encoder never left the CTC plateau in 30 epochs on 10 h (WER 100%); the GRU did.
+- [x] Greedy CTC decoding, then a small beam search — trackA/decode.py; beam search tested to never be less probable than greedy and to merge alignments. Beam 8 gave 71.7% vs 72.8% greedy on the 10 h model.
+- [ ] WER vs training hours curve (e.g. 10, 25, 50, 100 hours) — PARTIAL: 10 h 72.8%, 25 h 56.6% (30 epochs, one seed, 300 dev utterances). 50 h and 100 h not run.
+- [ ] Evaluate on your English eval slice and compare with base and fine-tuned Whisper — code ready (trackA/evaluate.py); needs the owner's eval set. Whisper tiny/base/small on LibriSpeech dev: 8.2% / 5.8% / 3.7%.
+- [ ] Write up the comparison — trackA/README.md has the table and findings; the final write-up waits for the 50/100 h points and the owner-eval comparison.
 
 **You learn:** the fundamentals underneath the product, and evidence for why pretrained models dominate at small data scale.
 
