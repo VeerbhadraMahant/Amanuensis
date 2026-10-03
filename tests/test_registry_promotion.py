@@ -150,4 +150,4 @@ def test_training_blocked_when_vram_is_short(tmp_path):
 
 def test_lock_records_this_pid(tmp_path):
     process_lock.acquire(tmp_path / "x.lock")
-    assert (tmp_path / "x.lock").read_text() == str(os.getpid())
+    assert (tmp_path / "x.lock").read_text().startswith(f"{os.getpid()}:")

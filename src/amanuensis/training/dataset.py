@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 import yaml
 
+from amanuensis.text.normalizer import normalize
 from amanuensis.training.validators import ValidationConfig, validate
 
 REVIEWED_SQL = "status IN ('corrected', 'approved_as_is') AND final_text IS NOT NULL"
@@ -65,6 +66,21 @@ def eval_audio_hashes(eval_manifest: Path, eval_root: Path) -> set[str]:
     return {sha256_file(eval_root / e["audio"]) for e in json.loads(eval_manifest.read_text(encoding="utf-8"))}
 
 
+def eval_texts(eval_manifest: Path) -> set[str]:
+    """Normalized eval transcripts. A training utterance with the same text is excluded: a re-recording of an
+    eval sentence would leak it even though the audio bytes differ."""
+    return {normalize(e["text"]) for e in json.loads(eval_manifest.read_text(encoding="utf-8"))}
+
+
+def verify_registered(conn: sqlite3.Connection, manifest: Path) -> None:
+    """A manifest may only be trained on if the builder recorded it and it is unchanged since."""
+    row = conn.execute("SELECT content_hash FROM dataset_versions WHERE manifest_path = ?", (str(manifest),)).fetchone()
+    if row is None:
+        raise ValueError(f"{manifest} is not a registered dataset version; build it with build_dataset")
+    if hashlib.sha256(manifest.read_bytes()).hexdigest() != row["content_hash"]:
+        raise ValueError(f"{manifest} changed after it was built (hash mismatch)")
+
+
 def _group(tags_json: str) -> str:
     return "+".join(sorted(json.loads(tags_json))) or "untagged"
 
@@ -76,6 +92,7 @@ def build_dataset(
     vcfg: ValidationConfig,
     variants: dict[str, str],
     eval_hashes: set[str],
+    eval_text_set: frozenset[str] | set[str] = frozenset(),
 ) -> BuildResult:
     rows = conn.execute(f"SELECT * FROM utterances WHERE {REVIEWED_SQL} ORDER BY id").fetchall()
     result = BuildResult("", Path(), "", 0, {})
@@ -89,6 +106,9 @@ def build_dataset(
             audio = read_wav(path)
         except (OSError, EOFError, wave.Error) as e:  # missing or corrupt file: reject this utterance only
             result.rejected.append((r["id"], [f"unreadable audio ({type(e).__name__})"]))
+            continue
+        if normalize(r["final_text"]) in eval_text_set:
+            result.rejected.append((r["id"], ["text matches an item in the frozen eval set (excluded)"]))
             continue
         problems = validate(r["final_text"], audio, r["duration_s"], vcfg, variants)
         if problems:
@@ -145,7 +165,7 @@ def build_dataset(
     conn.execute(
         "INSERT INTO dataset_versions (version, created_at, manifest_path, utterance_count, hours_by_language,"
         " content_hash, parent_version) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (result.version, datetime.now(timezone.utc).isoformat(timespec="seconds"), str(manifest), len(selected),
+        (result.version, datetime.now(timezone.utc).isoformat(timespec="milliseconds"), str(manifest), len(selected),
          json.dumps(hours), result.content_hash, previous["version"] if previous else None),
     )
     conn.commit()

@@ -1,4 +1,7 @@
-"""Live dictation into the overlay. Usage: uv run python -m amanuensis.live"""
+"""Live dictation into the overlay. Usage: uv run python -m amanuensis.live [--inject]
+
+--inject also types committed text into the focused window (system-wide dictation).
+"""
 import threading
 import time
 
@@ -10,28 +13,40 @@ from amanuensis.audio.ring_buffer import RingBuffer
 from amanuensis.audio.vad import SileroProb, VadSegmenter
 from amanuensis.config import SAMPLE_RATE, WINDOW, load_paths, load_streaming, load_variants
 from amanuensis.logging import log
+from amanuensis.output.inject import InjectionSink
 from amanuensis.output.overlay import Overlay
 from amanuensis.store import db, lexicon, sessions
 from amanuensis.text.normalizer import canonicalize
 
 
-def main() -> None:
+def main(inject: bool = False) -> None:
     cfg = load_streaming()
     paths = load_paths()
+    if process_lock.is_active(process_lock.training_lock_path(paths.lock_file)):
+        raise SystemExit("training is running and needs the GPU: wait for it to finish before dictating")
     conn = db.connect(paths.db_path, check_same_thread=False)
     session_id = sessions.start_session(conn, f"base:{cfg.model}", "live")
     static_variants = load_variants(paths.variants_file)
     engine = FasterWhisperEngine(cfg)
+    injector = InjectionSink() if inject else None  # types into the focused window: opt-in only
     overlay = Overlay("CPU fallback: reduced accuracy" if engine.fallback else "")
     ring = RingBuffer(30 * SAMPLE_RATE)
     seg = VadSegmenter(SileroProb(), cfg.vad_threshold, cfg.min_silence_s)
 
     def on_utterance(audio, raw, latency_ms) -> None:
-        variants = {**static_variants, **lexicon.variant_map(conn)}
-        normalized = canonicalize(raw, variants, lexicon.approved_terms(conn))
-        sessions.log_utterance(conn, paths.audio_dir, session_id, audio, raw, normalized, latency_ms)
+        try:  # a logging failure (locked DB, full disk) must not stop dictation
+            variants = {**static_variants, **lexicon.variant_map(conn)}
+            normalized = canonicalize(raw, variants, lexicon.approved_terms(conn))
+            sessions.log_utterance(conn, paths.audio_dir, session_id, audio, raw, normalized, latency_ms)
+        except Exception as e:
+            log("utterance_log_failed", error=f"{type(e).__name__}: {e}", text=raw)
 
-    streamer = Streamer(engine, seg, cfg, overlay.push, on_utterance=on_utterance,
+    def sink(update) -> None:
+        overlay.push(update)
+        if injector:
+            injector(update)
+
+    streamer = Streamer(engine, seg, cfg, sink, on_utterance=on_utterance,
                         bias_terms=lambda: lexicon.approved_terms(conn))
     stop = threading.Event()
 
@@ -41,7 +56,10 @@ def main() -> None:
             if w is None:
                 time.sleep(0.005)
             else:
-                streamer.feed(w)
+                try:
+                    streamer.feed(w)
+                except Exception as e:  # keep the audio flowing; the failure is in the log
+                    log("stream_error", error=f"{type(e).__name__}: {e}")
 
     t = threading.Thread(target=worker, daemon=True)
     process_lock.acquire(paths.lock_file)  # tells the trainer that the GPU is in use
@@ -59,4 +77,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    main(inject="--inject" in sys.argv)

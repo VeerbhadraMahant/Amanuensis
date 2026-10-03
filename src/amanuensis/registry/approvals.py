@@ -13,14 +13,22 @@ def _now() -> str:
 
 
 def request(conn: sqlite3.Connection, version: str, decision: PromotionDecision) -> int:
-    """Queue a promotion for the owner. Only a decision that passed the gate can be queued."""
+    """Queue a promotion for the owner. Only a decision that passed the gate can be queued.
+    Idempotent: a model with a pending request keeps that one. The current champion is recorded so an
+    approval can be refused if the comparison has gone stale."""
     if not decision.passed:
         raise PermissionError("only a promotion decision that passed the gate can be sent for approval")
     if models.get(conn, version) is None:
         raise KeyError(version)
+    existing = conn.execute(
+        "SELECT id FROM promotion_requests WHERE model_version = ? AND status = 'pending'", (version,)
+    ).fetchone()
+    if existing:
+        return existing["id"]
+    champ = models.champion(conn)
     cur = conn.execute(
-        "INSERT INTO promotion_requests (model_version, decision, created_at) VALUES (?, ?, ?)",
-        (version, json.dumps(asdict(decision)), _now()),
+        "INSERT INTO promotion_requests (model_version, decision, created_at, champion_at_request) VALUES (?, ?, ?, ?)",
+        (version, json.dumps(asdict(decision)), _now(), champ["version"] if champ else None),
     )
     conn.commit()
     return cur.lastrowid
@@ -42,10 +50,16 @@ def _get_pending(conn: sqlite3.Connection, request_id: int) -> sqlite3.Row:
 
 def approve(conn: sqlite3.Connection, request_id: int) -> None:
     row = _get_pending(conn, request_id)
-    d = json.loads(row["decision"])
-    models.promote(conn, row["model_version"], PromotionDecision(**d))
-    conn.execute("UPDATE promotion_requests SET status = 'approved', decided_at = ? WHERE id = ?", (_now(), request_id))
-    conn.commit()
+    champ = models.champion(conn)
+    if (champ["version"] if champ else None) != row["champion_at_request"]:
+        raise ValueError("the champion changed since this request was made, so its comparison is stale: re-run the loop")
+    try:
+        models.promote(conn, row["model_version"], PromotionDecision(**json.loads(row["decision"])), commit=False)
+        conn.execute("UPDATE promotion_requests SET status = 'approved', decided_at = ? WHERE id = ?", (_now(), request_id))
+        conn.commit()  # promotion and request status are one transaction
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def decline(conn: sqlite3.Connection, request_id: int) -> None:

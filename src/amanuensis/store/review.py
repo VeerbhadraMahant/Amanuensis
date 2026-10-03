@@ -10,7 +10,7 @@ MAX_REVIEW_GAP_S = 120  # longer gaps between reviews are breaks, not review tim
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 def _check_tags(tags: list[str], allowed: list[str]) -> None:

@@ -128,10 +128,10 @@ Start this phase once you have roughly 2 to 3 hours of reviewed speech. Expect c
 
 ## Phase 6: Polish and extensions (pick based on interest)
 
-- [ ] System-wide text injection adapter for your OS
+- [x] System-wide text injection adapter for your OS — output/inject.py (Windows SendInput, Unicode incl. surrogate pairs; verified by typing into a focused Tk entry). Opt-in via `python -m amanuensis.live --inject`; only committed text is typed.
 - [ ] Async LLM cleanup pass on finalized utterances (removing disfluencies, enforcing spelling), off by default, measured separately
-- [ ] Second held-out eval set to detect overfitting to the first
-- [ ] Results page: WER per version per language over time, correction rate over time
+- [ ] Second held-out eval set to detect overfitting to the first — `second_set` in configs/eval.yaml (commented template): evaluated next to the frozen set and shown on the results page; the gate never uses it. Needs the owner's second recording.
+- [x] Results page: WER per version per language over time, correction rate over time — /api/results + Results page: normalized WER per version per language (+ second set), correction rate per day. Tested through the API; the page was not exercised in a browser.
 - [ ] Short write-up or blog post with the result charts
 
 ---

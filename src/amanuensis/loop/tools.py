@@ -82,7 +82,7 @@ def verify_eval_hash(ctx: LoopContext) -> dict:
 
 def build_dataset(ctx: LoopContext) -> dict:
     root, mpath = Path(ctx.eval_cfg["eval_dir"]), Path(ctx.eval_cfg["manifest"])
-    res = ds.build_dataset(ctx.conn, ctx.paths.audio_dir, ctx.dataset_cfg, ctx.vcfg, ctx.variants, ds.eval_audio_hashes(mpath, root))
+    res = ds.build_dataset(ctx.conn, ctx.paths.audio_dir, ctx.dataset_cfg, ctx.vcfg, ctx.variants, ds.eval_audio_hashes(mpath, root), ds.eval_texts(mpath))
     ctx.state["dataset_version"] = res.version
     ctx.state["dataset"] = {"version": res.version, "hours_by_group": res.hours_by_group, "manifest": str(res.manifest_path)}
     return {
@@ -96,6 +96,7 @@ def train_challenger(ctx: LoopContext, batch_size: int | None = None, grad_accum
     """Train on the current dataset. Out-of-memory is retried with half the batch and double accumulation."""
     version = ctx.state["dataset_version"]
     manifest = Path(ctx.conn.execute("SELECT manifest_path FROM dataset_versions WHERE version = ?", (version,)).fetchone()[0])
+    ds.verify_registered(ctx.conn, manifest)  # never train on a manifest the builder did not write
     cfg = dataclasses.replace(ctx.train_cfg, batch_size=batch_size or ctx.train_cfg.batch_size,
                               grad_accum=grad_accum or ctx.train_cfg.grad_accum)
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -142,25 +143,38 @@ def evaluate(ctx: LoopContext, which: str, run_id: int) -> dict:
     else:
         champ = models.champion(ctx.conn)
         model = champ["ct2_path"] if champ else ctx.loop_cfg.baseline_model
-    report = ctx.evaluator(model, ctx.eval_cfg, ctx.sc, ctx.variants, lexicon.approved_terms(ctx.conn), ctx.loop_cfg.latency_clips)
+    terms = lexicon.approved_terms(ctx.conn)
+    report = ctx.evaluator(model, ctx.eval_cfg, ctx.sc, ctx.variants, terms, ctx.loop_cfg.latency_clips)
+    second = ctx.eval_cfg.get("second_set")
+    if second:  # reported next to the primary set to expose overfitting to it; never used by the gate
+        report["second_set"] = ctx.evaluator(model, second, ctx.sc, ctx.variants, terms, 0)
     ctx.loop_cfg.reports_dir.mkdir(parents=True, exist_ok=True)
     path = ctx.loop_cfg.reports_dir / f"run-{run_id}-{which}.json"
     path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     ctx.state[f"report_{which}"] = report
+    version = ctx.state["challenger"] if which == "challenger" else (models.champion(ctx.conn) or {}).get("version")
+    if version:
+        models.set_eval_report(ctx.conn, version, str(path))
     return {"report_path": str(path), "overall": report["overall"], "latency_p50_s": report["latency_p50_s"],
             "per_language_wer": {k: v["normalized_wer"] for k, v in report["per_language"].items()}}
 
 
 def decide_promotion(ctx: LoopContext) -> dict:
-    """Apply the owner's thresholds. A pass queues an owner approval; a fail rejects the challenger."""
+    """Apply the owner's thresholds. A pass queues an owner approval; a fail rejects the challenger.
+    Idempotent: calling it again returns the first result instead of queuing or rejecting twice."""
+    if "decision_result" in ctx.state:
+        return ctx.state["decision_result"]
     decision = decide(ctx.state["report_champion"], ctx.state["report_challenger"], ctx.rules_loader(), ctx.state.get("parity_ok", False))
     ctx.state["decision"] = decision
     version = ctx.state["challenger"]
     if decision.passed:
-        request_id = approvals.request(ctx.conn, version, decision)
-        return {"passed": True, "reasons": decision.reasons, "deltas": decision.deltas, "approval_request_id": request_id}
-    models.reject(ctx.conn, version)
-    return {"passed": False, "reasons": decision.reasons, "deltas": decision.deltas}
+        result = {"passed": True, "reasons": decision.reasons, "deltas": decision.deltas,
+                  "approval_request_id": approvals.request(ctx.conn, version, decision)}
+    else:
+        models.reject(ctx.conn, version)
+        result = {"passed": False, "reasons": decision.reasons, "deltas": decision.deltas}
+    ctx.state["decision_result"] = result
+    return result
 
 
 def recent_corrections(ctx: LoopContext, limit: int = 50) -> list[dict]:

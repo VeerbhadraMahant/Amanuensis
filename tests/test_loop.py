@@ -1,4 +1,5 @@
 """Loop tests with fake trainer/converter/evaluator: the control flow, gates and failure handling are real."""
+import copy
 import json
 from pathlib import Path
 
@@ -66,7 +67,7 @@ class Fakes:
 
     def evaluator(self, model, eval_cfg, sc, variants, terms, latency_clips):
         self.calls.append(("eval", str(model)))
-        return self.challenger_report if "ct2" in str(model) else BASE
+        return copy.deepcopy(self.challenger_report if "ct2" in str(model) else BASE)  # real runs return fresh dicts
 
 
 @pytest.fixture
@@ -279,9 +280,12 @@ def test_failed_step_is_logged_with_its_error(env):
 def test_tool_outputs_never_contain_audio_paths(env):
     ctx, _, _, conn = env
     ctx.state["dataset_version"] = None
+    first = conn.execute("SELECT id FROM utterances ORDER BY id").fetchone()[0]
+    review.save_correction(conn, first, "a corrected sentence", ["en"], TAGS)  # so recent_corrections returns something
+    assert tools.recent_corrections(ctx)
     built = tools.build_dataset(ctx)
     ctx2_text = json.dumps([built, tools.recent_corrections(ctx), tools.check_trigger(ctx, True)])
-    assert ".wav" not in ctx2_text and "audio_path" not in ctx2_text
+    assert ".wav" not in ctx2_text and "audio" not in ctx2_text.lower().replace("unreadable audio", "")
 
 
 def test_recent_corrections_are_text_only(env):

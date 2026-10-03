@@ -52,6 +52,7 @@ MIGRATIONS = [
         created_at TEXT NOT NULL, decided_at TEXT
     );
     """,
+    "ALTER TABLE promotion_requests ADD COLUMN champion_at_request TEXT;",
 ]
 
 
@@ -65,6 +66,8 @@ def connect(path: Path | str, check_same_thread: bool = True) -> sqlite3.Connect
     conn = sqlite3.connect(path, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")  # dictation, the UI and the loop share this file
+    conn.execute("PRAGMA journal_mode = WAL")
     migrate(conn)
     return conn
 

@@ -40,7 +40,7 @@
 <main>
   <header>
     <h1>Amanuensis review <span id="remaining" class="meta"></span></h1>
-    <nav><a id="nav-review" href="#review">Review</a><a id="nav-stats" href="#stats">Stats</a><a id="nav-lexicon" href="#lexicon">Lexicon</a><a id="nav-approvals" href="#approvals">Approvals</a></nav>
+    <nav><a id="nav-review" href="#review">Review</a><a id="nav-stats" href="#stats">Stats</a><a id="nav-lexicon" href="#lexicon">Lexicon</a><a id="nav-approvals" href="#approvals">Approvals</a><a id="nav-results" href="#results">Results</a></nav>
   </header>
 
   <section id="review" class="card" hidden>
@@ -79,6 +79,14 @@
     <div id="appr-list"></div>
   </section>
 
+  <section id="results" class="card" hidden>
+    <h2 class="meta">Normalized WER per model version (lower is better)</h2>
+    <table id="res-versions"></table>
+    <h2 class="meta">Correction rate per day (share of reviewed utterances you had to edit)</h2>
+    <svg id="res-chart" viewBox="0 0 600 120" role="img" aria-label="Correction rate over time" width="100%"></svg>
+    <table id="res-days"></table>
+  </section>
+
   <section id="stats" class="card" hidden>
     <table id="stats-table"></table>
   </section>
@@ -90,7 +98,9 @@ const $ = (id) => document.getElementById(id);
 let queue = [], current = null, allTags = [], selected = new Set(), spellTimer = null, busy = false;
 
 async function api(path, method = "GET", body) {
-  const res = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  const headers = { "X-Amanuensis-UI": "1" };
+  if (body) headers["Content-Type"] = "application/json";
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
   return res.json();
 }
@@ -124,12 +134,13 @@ function updateSaveLabel() {
 function show() {
   $("remaining").textContent = queue.length ? `${queue.length} to review` : "";
   const have = queue.length > 0;
-  const other = ["#stats", "#lexicon", "#approvals"].includes(location.hash);
+  const other = ["#stats", "#lexicon", "#approvals", "#results"].includes(location.hash);
   $("review").hidden = !have || other;
   $("empty").hidden = have || other;
   $("stats").hidden = location.hash !== "#stats";
   $("lexicon").hidden = location.hash !== "#lexicon";
   $("approvals").hidden = location.hash !== "#approvals";
+  $("results").hidden = location.hash !== "#results";
   if (!have) { current = null; return; }
   current = queue[0];
   $("meta").textContent = `#${current.id} · ${current.duration_s.toFixed(1)} s · ${current.created_at}`;
@@ -198,7 +209,7 @@ const skip = () => { if (queue.length > 1) { queue.push(queue.shift()); show(); 
 const replay = () => { $("player").currentTime = 0; $("player").play().catch(() => {}); };
 
 document.addEventListener("keydown", (e) => {
-  if (["#stats", "#lexicon", "#approvals"].includes(location.hash)) return;
+  if (["#stats", "#lexicon", "#approvals", "#results"].includes(location.hash)) return;
   if (e.key === "Enter" && !e.shiftKey && !e.altKey && !e.ctrlKey) { e.preventDefault(); submit(); }
   else if (e.altKey && e.key.toLowerCase() === "r") { e.preventDefault(); reject(); }
   else if (e.altKey && e.key.toLowerCase() === "p") { e.preventDefault(); replay(); }
@@ -270,7 +281,33 @@ async function renderApprovals() {
   });
 }
 
+async function renderResults() {
+  const r = await api("/api/results");
+  const fill = (table, head, rows) => {
+    table.replaceChildren();
+    const h = table.insertRow();
+    head.forEach((x) => { const c = document.createElement("th"); c.textContent = x; h.append(c); });
+    rows.forEach((row) => { const tr = table.insertRow(); row.forEach((x) => { tr.insertCell().textContent = x; }); });
+  };
+  const langs = [...new Set(r.versions.flatMap((v) => Object.keys(v.per_language_wer)))].sort();
+  const pct = (x) => (x === null || x === undefined ? "n/a" : `${(x * 100).toFixed(1)}%`);
+  fill($("res-versions"), ["Version", "Status", "Overall", ...langs, "Second set"],
+    r.versions.map((v) => [v.version, v.status, pct(v.overall_wer), ...langs.map((l) => pct(v.per_language_wer[l])), pct(v.second_set_wer)]));
+  fill($("res-days"), ["Day", "Edited", "As heard", "Correction rate"],
+    r.correction_rate_by_day.map((d) => [d.day, d.corrected, d.approved_as_is, pct(d.correction_rate)]));
+  const svg = $("res-chart"), pts = r.correction_rate_by_day;
+  svg.replaceChildren();
+  if (pts.length > 1) {
+    const x = (i) => 10 + (580 * i) / (pts.length - 1), y = (v) => 110 - 100 * v;
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    line.setAttribute("points", pts.map((d, i) => `${x(i)},${y(d.correction_rate)}`).join(" "));
+    line.setAttribute("fill", "none"); line.setAttribute("stroke", "currentColor"); line.setAttribute("stroke-width", "2");
+    svg.append(line);
+  }
+}
+
 async function route() {
+  if (location.hash === "#results") await renderResults();
   if (location.hash === "#approvals") await renderApprovals();
   if (location.hash === "#stats") await renderStats();
   if (location.hash === "#lexicon") await renderLexicon();

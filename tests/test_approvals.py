@@ -1,5 +1,5 @@
 import pytest
-from fastapi.testclient import TestClient
+from tests.helpers import make_client
 
 from amanuensis.eval.promotion import PromotionDecision
 from amanuensis.registry import approvals, models
@@ -36,7 +36,7 @@ def test_approve_promotes_and_decline_rejects(conn):
 
 def test_ui_endpoints(tmp_path, conn):
     approvals.request(conn, "m1", PASS)
-    client = TestClient(create_app(conn, tmp_path, ["en"], {}))
+    client = make_client(create_app(conn, tmp_path, ["en"], {}))
     items = client.get("/api/approvals").json()
     assert len(items) == 1 and items[0]["decision"]["reasons"] == ["all promotion gates passed"]
     assert client.post(f"/api/approvals/{items[0]['id']}/approve").status_code == 200

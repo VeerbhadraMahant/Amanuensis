@@ -68,9 +68,11 @@ def decide(champion: dict, challenger: dict, rules: PromotionRules, parity_ok: b
         if nt is None or ct - nt > rules.max_term_accuracy_drop:
             reasons.append(f"lexicon term accuracy fell from {ct:.3f} to {nt if nt is None else round(nt, 3)}")
 
-    worse = challenger["latency_p50_s"] - champion["latency_p50_s"]
-    if worse > rules.max_latency_p50_worsening_s:
-        reasons.append(f"p50 latency worsened by {worse:.3f}s (tolerance {rules.max_latency_p50_worsening_s:.3f}s)")
+    nan = float("nan")
+    ch_lat, cp_lat = challenger["latency_p50_s"], champion["latency_p50_s"]
+    worse = (nan if ch_lat is None else ch_lat) - (nan if cp_lat is None else cp_lat)
+    if not worse <= rules.max_latency_p50_worsening_s:  # written so that NaN (no measurement) fails
+        reasons.append(f"p50 latency worsened by {worse:.3f}s or was not measured (tolerance {rules.max_latency_p50_worsening_s:.3f}s)")
 
     if rules.require_parity and not parity_ok:
         reasons.append("CT2 parity check did not pass")

@@ -12,7 +12,7 @@ from amanuensis.loop import tools
 from amanuensis.loop.report import write_report
 from amanuensis.loop.run import BudgetExceeded, LoopRun
 from amanuensis.logging import log
-from amanuensis.registry import models
+from amanuensis.registry import approvals, models
 from amanuensis.training.dataset import EvalLeakError
 from amanuensis.training.guard import TrainingBlocked
 
@@ -50,6 +50,7 @@ def run_cycle(ctx: tools.LoopContext, trigger: str = "manual") -> RunResult:
         decision = run.step("decide_promotion", lambda: tools.decide_promotion(ctx))
         outcome = "awaiting_owner_approval" if decision["passed"] else "rejected_by_gate"
     except BudgetExceeded as e:
+        _reject_challenger(ctx)
         outcome = f"stopped: {e}"
     except ManifestHashError:
         outcome = "aborted: frozen eval set failed its hash check"
@@ -67,10 +68,14 @@ def run_cycle(ctx: tools.LoopContext, trigger: str = "manual") -> RunResult:
 
 
 def _reject_challenger(ctx: tools.LoopContext) -> None:
-    """A challenger from a run that did not finish must not linger as a candidate."""
+    """A challenger from a run that did not finish must not linger as a candidate.
+    One already waiting for the owner's decision is left alone."""
     version = ctx.state.get("challenger")
-    if version and models.get(ctx.conn, version)["status"] == "challenger":
-        models.reject(ctx.conn, version)
+    if not version or models.get(ctx.conn, version)["status"] != "challenger":
+        return
+    if any(p["model_version"] == version for p in approvals.pending(ctx.conn)):
+        return
+    models.reject(ctx.conn, version)
 
 
 def _finish(ctx: tools.LoopContext, run: LoopRun, outcome: str) -> RunResult:

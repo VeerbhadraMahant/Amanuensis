@@ -2,17 +2,20 @@
 import sqlite3
 from dataclasses import asdict
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from amanuensis.config import load_language_tags, load_paths, load_variants
-from amanuensis.registry import approvals
+from amanuensis.registry import approvals, results
 from amanuensis.store import db, lexicon, review
 from amanuensis.text.spelling import check_spelling
 
 STATIC = Path(__file__).parent / "static"
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+UI_HEADER = "x-amanuensis-ui"  # a cross-site form or fetch cannot set this without a CORS preflight, which we never grant
 
 
 class CorrectBody(BaseModel):
@@ -34,10 +37,24 @@ class LexiconBody(BaseModel):
     kind: str
 
 
-def create_app(conn: sqlite3.Connection, audio_dir: Path, tags: list[str], variants: dict[str, str]) -> FastAPI:
+def create_app(
+    conn: sqlite3.Connection, audio_dir: Path, tags: list[str], variants: dict[str, str],
+    allowed_hosts: frozenset[str] = LOCAL_HOSTS,
+) -> FastAPI:
     # Endpoints are async on purpose: they run on the single event-loop thread, so the shared
     # sqlite connection is never used concurrently.
     app = FastAPI(title="Amanuensis correction UI")
+
+    @app.middleware("http")
+    async def local_only(request, call_next):
+        """Any web page the owner visits can reach 127.0.0.1. Refuse foreign Host headers (DNS rebinding) and
+        state-changing requests that lack our header (CSRF): approvals and lexicon edits must come from this UI."""
+        host = urlsplit("//" + request.headers.get("host", "")).hostname
+        if host not in allowed_hosts:
+            return JSONResponse({"detail": "forbidden host"}, status_code=403)
+        if request.method not in ("GET", "HEAD") and request.headers.get(UI_HEADER) != "1":
+            return JSONResponse({"detail": "missing UI header"}, status_code=403)
+        return await call_next(request)
 
     def guarded(fn, *args):  # KeyError -> 404, ValueError -> 422
         try:
@@ -122,6 +139,10 @@ def create_app(conn: sqlite3.Connection, audio_dir: Path, tags: list[str], varia
     async def approvals_decline(request_id: int):
         guarded(approvals.decline, conn, request_id)
         return {"ok": True}
+
+    @app.get("/api/results")
+    async def results_history():
+        return results.history(conn)
 
     @app.get("/api/stats")
     async def stats():

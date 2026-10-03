@@ -2,7 +2,7 @@ import json
 
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
+from tests.helpers import make_client
 
 from amanuensis.asr.streaming import Streamer
 from amanuensis.audio.vad import VadSegmenter
@@ -65,7 +65,7 @@ def test_correctly_cased_term_is_not_flagged_but_wrong_casing_is():
 
 
 def test_lexicon_api_and_spellcheck_uses_it(tmp_path, conn):
-    client = TestClient(create_app(conn, tmp_path, ["en"], {}))
+    client = make_client(create_app(conn, tmp_path, ["en"], {}))
     r = client.post("/api/lexicon", json={"canonical": "PCCOE", "variants": ["pccoe"], "kind": "name"})
     assert r.status_code == 200
     assert client.post("/api/lexicon", json={"canonical": "", "kind": "name"}).status_code == 422

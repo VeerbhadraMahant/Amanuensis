@@ -12,6 +12,7 @@ from pathlib import Path
 
 import yaml
 
+from amanuensis import process_lock
 from amanuensis.logging import log
 from amanuensis.training.dataset import load_manifest, read_wav
 from amanuensis.training.guard import ensure_can_train
@@ -72,11 +73,21 @@ def make_batches(items: list[dict], audio_dir: Path, processor, batch_size: int,
 
 
 def train(cfg: TrainConfig, manifest: Path, audio_dir: Path, run_name: str, lock_file: Path, config_path: Path) -> Path:
+    """lock_file is the dictation lock; training holds its own lock next to it so dictation cannot start mid-run."""
+    ensure_can_train(lock_file, cfg.min_free_vram_gb)
+    mine = process_lock.training_lock_path(lock_file)
+    process_lock.acquire(mine)
+    try:
+        return _train(cfg, manifest, audio_dir, run_name, config_path)
+    finally:
+        process_lock.release(mine)
+
+
+def _train(cfg: TrainConfig, manifest: Path, audio_dir: Path, run_name: str, config_path: Path) -> Path:
     import torch
     from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
     from transformers import BitsAndBytesConfig, WhisperForConditionalGeneration, WhisperProcessor
 
-    ensure_can_train(lock_file, cfg.min_free_vram_gb)
     run_dir = cfg.runs_dir / run_name
     run_dir.mkdir(parents=True, exist_ok=False)  # never overwrite a previous run
     shutil.copy(config_path, run_dir / "train_config.yaml")  # every run's config is logged
@@ -190,4 +201,8 @@ if __name__ == "__main__":
     p.add_argument("--config", type=Path, default=Path("configs/training.yaml"))
     a = p.parse_args()
     paths = load_paths()
+    from amanuensis.store import db
+    from amanuensis.training.dataset import verify_registered
+
+    verify_registered(db.connect(paths.db_path), a.manifest)  # refuse hand-made or edited manifests
     print(train(load_train_config(a.config), a.manifest, paths.audio_dir, a.run_name, paths.lock_file, a.config))

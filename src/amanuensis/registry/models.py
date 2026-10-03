@@ -48,8 +48,10 @@ def reject(conn: sqlite3.Connection, version: str) -> None:
     conn.commit()
 
 
-def promote(conn: sqlite3.Connection, version: str, decision: PromotionDecision) -> None:
-    """Make `version` champion. Needs a passing PromotionDecision: there is no way around the gate."""
+def promote(conn: sqlite3.Connection, version: str, decision: PromotionDecision, commit: bool = True) -> None:
+    """Make `version` champion. Needs a passing PromotionDecision: there is no way around the gate.
+
+    commit=False lets the caller make this part of a larger transaction (see registry.approvals)."""
     if not decision.passed:
         raise PermissionError(f"promotion refused: {'; '.join(decision.reasons)}")
     row = get(conn, version)
@@ -57,9 +59,10 @@ def promote(conn: sqlite3.Connection, version: str, decision: PromotionDecision)
         raise KeyError(version)
     if row["status"] != "challenger":
         raise ValueError(f"{version} is {row['status']}, only a challenger can be promoted")
-    with conn:  # one transaction: there is never zero or two champions
-        conn.execute("UPDATE model_versions SET status = 'archived' WHERE status = 'champion'")
-        conn.execute("UPDATE model_versions SET status = 'champion' WHERE version = ?", (version,))
+    conn.execute("UPDATE model_versions SET status = 'archived' WHERE status = 'champion'")
+    conn.execute("UPDATE model_versions SET status = 'champion' WHERE version = ?", (version,))
+    if commit:  # both updates land together: there is never zero or two champions
+        conn.commit()
 
 
 def lineage(conn: sqlite3.Connection, version: str) -> dict:

@@ -5,3 +5,9 @@ variants_file: null   # set once docs/romanization.md exists and a variant map i
 models: [small, medium, large-v3-turbo]
 compute_type: int8
 language: en          # ADR-002: English token for non-German speech
+# Optional second held-out set (docs/systemdesign.md section 10). Reported next to the frozen set to expose
+# overfitting to it; the promotion gate never uses it. Uncomment once recorded and hashed:
+# second_set:
+#   eval_dir: data/eval_second
+#   manifest: data/eval_second/manifest.json
+#   manifest_hash_file: data/eval_second/manifest.sha256

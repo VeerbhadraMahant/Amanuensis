@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
+from tests.helpers import make_client
 
 from amanuensis.store import db, sessions
 from amanuensis.ui.app import create_app
@@ -14,7 +14,7 @@ def client(tmp_path):
     sid = sessions.start_session(conn, "base:small", "live")
     for i in range(2):
         sessions.log_utterance(conn, tmp_path, sid, np.zeros(16000, np.float32), f"raw {i}", f"norm {i}", 800.0)
-    return TestClient(create_app(conn, tmp_path, TAGS, {"kyaa": "kya"}))
+    return make_client(create_app(conn, tmp_path, TAGS, {"kyaa": "kya"}))
 
 
 def test_index_and_config(client):
@@ -55,7 +55,7 @@ def test_audio_path_outside_audio_dir_is_not_served(tmp_path):
     uid = sessions.log_utterance(conn, audio_dir, sid, np.zeros(160, np.float32), "r", "n", None)
     conn.execute("UPDATE utterances SET audio_path = ? WHERE id = ?", ("../secret.wav", uid))
     conn.commit()
-    assert TestClient(create_app(conn, audio_dir, TAGS, {})).get(f"/api/audio/{uid}").status_code == 404
+    assert make_client(create_app(conn, audio_dir, TAGS, {})).get(f"/api/audio/{uid}").status_code == 404
 
 
 def test_spellcheck_endpoint(client):
