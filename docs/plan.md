@@ -36,15 +36,17 @@ Dictate real things daily (notes, messages, project logs) for 15 to 30 minutes a
 
 **Why:** Real-time streaming is the hardest engineering piece and is independent of fine-tuning. Getting it working on the base model means every later model improvement shows up immediately in daily use.
 
-- [ ] Audio capture with ring buffer (owner: `realtime-audio-engineer`)
-- [ ] Silero VAD segmentation with configurable silence threshold
-- [ ] faster-whisper engine wrapper with config-driven model and compute type
-- [ ] Streaming loop with LocalAgreement commit and buffer trimming
-- [ ] Prompt with recent committed text
-- [ ] Overlay window showing committed and tentative text
-- [ ] Latency instrumentation: time to first partial, commit latency p50 and p95, decode time per cycle
-- [ ] Replay mode: feed a WAV file through the streaming pipeline as if live, so latency and accuracy are testable without a microphone
-- [ ] Run `code-reviewer` and `test-runner` in parallel on the finished pipeline (first practice of parallel subagents)
+- [x] Audio capture with ring buffer (owner: `realtime-audio-engineer`) — RingBuffer + sounddevice callback; mic opens and captures ~16 kHz on this machine.
+- [x] Silero VAD segmentation with configurable silence threshold — reuses the ONNX Silero model bundled with faster-whisper (no torch); it is stateless per call, so each window is scored with 1 s of context.
+- [x] faster-whisper engine wrapper with config-driven model and compute type — config-driven; CPU fallback to tiny with a visible flag. Learned: a mid-sentence cut plus a prompt can make Whisper emit 224 junk tokens (~3 s), so decode uses temperature 0 and max_new_tokens scaled by audio length.
+- [x] Streaming loop with LocalAgreement commit and buffer trimming — Learned: the prompt must contain only text that already left the buffer, otherwise Whisper skips words still in the audio (this dropped words until fixed).
+- [x] Prompt with recent committed text — see note above; tested by test_prompt_never_contains_text_still_in_the_buffer.
+- [x] Overlay window showing committed and tentative text — tkinter always-on-top; renders committed/tentative in a smoke test; not yet used with live speech.
+- [x] Latency instrumentation: time to first partial, commit latency p50 and p95, decode time per cycle — first partial, commit p50/p95, decode time per cycle; falls-behind detection widens the re-decode interval.
+- [x] Replay mode: feed a WAV file through the streaming pipeline as if live, so latency and accuracy are testable without a microphone — `python -m amanuensis.asr.replay FILE.wav [--ref TEXT]`; reports streaming vs offline WER.
+- [ ] Run `code-reviewer` and `test-runner` in parallel on the finished pipeline (first practice of parallel subagents) — NOT DONE as subagents; I self-reviewed the diff and ran pytest (28 pass). Run the subagents when they are loaded.
+
+**Status (Phase 1):** pipeline built and measured on ONE synthetic TTS clip (11.7 s, Whisper small int8, RTX 4060): first partial p50 0.98 s, commit p50 1.28 s / p95 1.65 s, decode p95 0.73 s, streaming WER == offline WER (0.0). Still owed: speak into the overlay live, and re-measure on the real eval set once it exists. ADR-002 en/de language detection is not implemented yet; the language is fixed in `configs/streaming.yaml`.
 
 **Exit:** live dictation works in the overlay; latency measured on eval audio in replay mode; streaming WER compared with offline WER on the same audio.
 

@@ -1,0 +1,10 @@
+model: small            # decided after Phase 0 baseline
+device: auto            # auto = cuda if available, else cpu fallback with smaller model
+compute_type: int8
+cpu_fallback_model: tiny
+language: en            # ADR-002
+vad_threshold: 0.5
+min_silence_s: 0.6      # silence that closes an utterance
+redecode_interval_s: 0.7
+max_buffer_s: 20.0
+prompt_chars: 200
