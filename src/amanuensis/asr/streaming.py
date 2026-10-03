@@ -37,8 +37,10 @@ class Streamer:
         cfg: StreamingConfig,
         sink: Callable[[Update], None],
         stats: LatencyStats | None = None,
+        on_utterance: Callable[[np.ndarray, str, float | None], None] | None = None,
     ) -> None:
         self._engine, self._seg, self._cfg, self._sink = engine, segmenter, cfg, sink
+        self._on_utterance = on_utterance  # (audio, raw text, median commit latency ms) per closed utterance
         self.stats = stats or LatencyStats()
         self.utterances: list[str] = []
         self._agree = LocalAgreement()
@@ -54,6 +56,8 @@ class Streamer:
         self._buf_words: list[Word] = []  # committed words whose audio is still in the buffer
         self._utt_words: list[Word] = []
         self._first_partial_done = False
+        self._utt_audio: list[np.ndarray] = []
+        self._utt_lat: list[float] = []
 
     def feed(self, window: np.ndarray) -> None:
         event = self._seg.feed(window)
@@ -62,6 +66,9 @@ class Streamer:
         if event and event.kind == "start":
             self._active, self._speech_start = True, event.sample
             self._last_decode, self._first_partial_done = self._total, False
+            self._utt_audio, self._utt_lat = [self._buf.copy()], []  # buffer holds the pre-roll + onset
+        elif self._active:
+            self._utt_audio.append(window)
         if self._active:
             if event and event.kind == "end":
                 self._finalize()
@@ -105,6 +112,9 @@ class Streamer:
         log("utterance", start_s=self._speech_start / SAMPLE_RATE, end_s=now, text=text)
         if text:
             self.utterances.append(text)
+            if self._on_utterance:  # empty hypotheses (noise) are not logged
+                lat = float(np.median(self._utt_lat)) * 1000 if self._utt_lat else None
+                self._on_utterance(np.concatenate(self._utt_audio), text, lat)
         self._sink(Update(_text(rest), "", final=True))
         self._utt_words, self._active = [], False
         self._drop_before(self._total - PREROLL)
@@ -113,6 +123,7 @@ class Streamer:
     def _record(self, committed: list[Word], now: float, dt: float) -> None:
         for w in committed:
             self.stats.commit_s.append(now - w.end + dt)
+            self._utt_lat.append(now - w.end + dt)
         self._utt_words += committed
         self._buf_words += committed
 

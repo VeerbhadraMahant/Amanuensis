@@ -24,12 +24,14 @@ class ReplayResult:
     latency: dict
 
 
-def replay_audio(audio: np.ndarray, engine: Engine, cfg: StreamingConfig, prob=None) -> tuple[str, dict]:
+def replay_audio(
+    audio: np.ndarray, engine: Engine, cfg: StreamingConfig, prob=None, on_utterance=None
+) -> tuple[str, dict]:
     tail = np.zeros(int((cfg.min_silence_s + 0.3) * SAMPLE_RATE), dtype=np.float32)
     audio = np.concatenate([audio.astype(np.float32), tail])
     audio = audio[: len(audio) // WINDOW * WINDOW]
     seg = VadSegmenter(prob or SileroProb(), cfg.vad_threshold, cfg.min_silence_s)
-    streamer = Streamer(engine, seg, cfg, lambda u: None)
+    streamer = Streamer(engine, seg, cfg, lambda u: None, on_utterance=on_utterance)
     for i in range(0, len(audio), WINDOW):
         streamer.feed(audio[i : i + WINDOW])
     streamer.close()

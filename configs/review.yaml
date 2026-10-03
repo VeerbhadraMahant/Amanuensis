@@ -1,0 +1,3 @@
+# PLACEHOLDER convention: confirm or change. Tags are multi-select per utterance and drive
+# per-language balancing and metrics.
+language_tags: [en, de, hi, mr]

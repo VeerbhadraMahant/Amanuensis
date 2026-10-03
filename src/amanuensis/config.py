@@ -24,3 +24,26 @@ class StreamingConfig:
 def load_streaming(path: Path = Path("configs/streaming.yaml")) -> StreamingConfig:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     return StreamingConfig(**{f.name: raw[f.name] for f in fields(StreamingConfig)})
+
+
+@dataclass(frozen=True)
+class PathsConfig:
+    db_path: Path
+    audio_dir: Path
+    variants_file: Path  # owner-derived spelling variants; optional, absent until romanization.md exists
+
+
+def load_paths(path: Path = Path("configs/paths.yaml")) -> PathsConfig:
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return PathsConfig(**{f.name: Path(raw[f.name]) for f in fields(PathsConfig)})
+
+
+def load_language_tags(path: Path = Path("configs/review.yaml")) -> list[str]:
+    return list(yaml.safe_load(path.read_text(encoding="utf-8"))["language_tags"])
+
+
+def load_variants(path: Path) -> dict[str, str]:
+    """Owner-derived spelling variants (lowercase variant -> canonical). Empty until docs/romanization.md exists."""
+    if not path.exists():
+        return {}
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}

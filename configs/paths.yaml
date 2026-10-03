@@ -1,0 +1,3 @@
+db_path: data/amanuensis.db
+audio_dir: data/audio
+variants_file: configs/spelling_variants.yaml   # not created yet; spellings come from docs/romanization.md

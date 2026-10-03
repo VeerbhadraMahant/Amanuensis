@@ -183,3 +183,35 @@ def test_replay_audio_closes_trailing_utterance_and_reports_latency():
     text, latency = replay_audio(audio, FakeEngine(words), cfg(), prob=fake_vad(words))
     assert text == "alpha beta gamma"
     assert latency["commit_s"]["n"] == 3
+
+
+def _run_with_hook(words, seconds, c, engine=None):
+    got = []
+    engine = engine or FakeEngine(words)
+    seg = VadSegmenter(fake_vad(words), c.vad_threshold, c.min_silence_s)
+    s = Streamer(engine, seg, c, lambda u: None, on_utterance=lambda *a: got.append(a))
+    audio = (np.arange(int(seconds * SAMPLE_RATE)) / SCALE).astype(np.float32)
+    audio = audio[: len(audio) // WINDOW * WINDOW]
+    for i in range(0, len(audio), WINDOW):
+        s.feed(audio[i : i + WINDOW])
+    s.close()
+    return got
+
+
+def test_on_utterance_gets_full_untrimmed_audio_and_text():
+    words = speech([f"w{i}" for i in range(40)], 1.0)  # long speech: the decode buffer is trimmed meanwhile
+    got = _run_with_hook(words, 19.5, cfg(max_buffer_s=4.0))
+    assert len(got) == 1
+    a, text, lat = got[0]
+    assert text == " ".join(f"w{i}" for i in range(40))
+    assert len(a) > 16 * SAMPLE_RATE  # whole utterance, not just the last trimmed buffer
+    assert np.all(np.diff(a) >= 0)  # contiguous ramp: no gaps or duplicates
+    assert lat is not None and lat > 0
+
+
+def test_noise_utterance_with_empty_text_is_not_logged():
+    class Mute:
+        def transcribe(self, audio, prompt):
+            return []
+
+    assert _run_with_hook(speech(["x"], 1.0), 4.0, cfg(), engine=Mute()) == []

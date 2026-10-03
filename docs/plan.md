@@ -58,12 +58,12 @@ Dictate real things daily (notes, messages, project logs) for 15 to 30 minutes a
 
 **Why:** This is the data engine. The faster you can correct, the faster the model improves. Treat UI speed as a core metric.
 
-- [ ] SQLite schema and migrations from `systemdesign.md` section 6 (owner: main session, since it touches every plane)
-- [ ] Utterance logging at the end of each VAD segment: audio, raw and normalized hypothesis, model version, latency
-- [ ] Correction UI: list, playback, edit, approve as is, reject, language tags, keyboard shortcuts
-- [ ] Live spelling check against the guide inside the editor
-- [ ] Stats page: reviewed hours per language, correction rate, review throughput
-- [ ] Start the daily dictation habit
+- [x] SQLite schema and migrations from `systemdesign.md` section 6 (owner: main session, since it touches every plane) — all six tables from section 6 via PRAGMA user_version migrations; status CHECK constraint enforces the four states.
+- [x] Utterance logging at the end of each VAD segment: audio, raw and normalized hypothesis, model version, latency — Streamer.on_utterance hook gives the FULL utterance audio (not the trimmed decode buffer); empty-text noise segments are not logged. Learned: timestamp filenames collided on Windows (15 ms clock) and overwrote audio, so names are uuid4.
+- [x] Correction UI: list, playback, edit, approve as is, reject, language tags, keyboard shortcuts — FastAPI (127.0.0.1 only) + single-page vanilla JS; Enter approves-if-unchanged / saves correction, Alt+R reject, Alt+P replay, Alt+1..4 tags (sticky). API tested with TestClient; the page was NOT exercised in a browser (extension unavailable), only JS syntax-checked.
+- [x] Live spelling check against the guide inside the editor — check_spelling flags known variants with offsets and a one-click fix; it is inert until the owner's variant map exists (configs/spelling_variants.yaml).
+- [x] Stats page: reviewed hours per language, correction rate, review throughput — reviewed hours per language tag, correction rate, mean seconds per review (gaps over 120 s ignored).
+- [ ] Start the daily dictation habit — **OWNER**
 
 **Exit:** you can review an utterance in under about 5 seconds on average, and reviewed data is accumulating in all four languages.
 
