@@ -1,0 +1,5 @@
+datasets_dir: data/datasets
+max_hours_per_group: 5.0     # per language-tag combination
+val_fraction: 0.05           # training-time validation split. NOT the frozen eval set
+seed: 1337
+replay_min_fraction: 0.2     # warn if English+German is below this share of the data

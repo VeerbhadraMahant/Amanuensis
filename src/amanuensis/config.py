@@ -31,6 +31,7 @@ def load_streaming(path: Path = Path("configs/streaming.yaml")) -> StreamingConf
 class PathsConfig:
     db_path: Path
     audio_dir: Path
+    lock_file: Path  # present while dictation runs; the trainer refuses to start
     variants_file: Path  # owner-derived spelling variants; optional, absent until romanization.md exists
 
 

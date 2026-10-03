@@ -1,0 +1,10 @@
+# OWNER-ONLY. Agents must never edit this file (golden rule 5).
+# Every value below is deliberately null: promotion refuses to run until you set them all.
+# Meaning of each (see docs/systemdesign.md section 7, "Promotion rules"):
+min_relative_wer_improvement: null   # e.g. 0.05 = overall normalized WER must drop by at least 5% relative
+max_language_regression_abs: null    # max absolute WER increase allowed on any single language slice
+max_term_accuracy_drop: null         # max drop allowed in lexicon term accuracy
+max_latency_p50_worsening_s: null    # max p50 commit-latency increase in seconds
+require_parity: null                 # true = CT2 parity check must pass
+# Optional stricter per-language tolerances, e.g. watch German and English for forgetting:
+# language_tolerance_overrides: {de: 0.01, en: 0.01}

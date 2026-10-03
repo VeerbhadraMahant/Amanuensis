@@ -2,6 +2,7 @@
 import threading
 import time
 
+from amanuensis import process_lock
 from amanuensis.asr.engine import FasterWhisperEngine
 from amanuensis.asr.streaming import Streamer
 from amanuensis.audio.capture import open_microphone
@@ -43,12 +44,16 @@ def main() -> None:
                 streamer.feed(w)
 
     t = threading.Thread(target=worker, daemon=True)
-    with open_microphone(ring):
-        t.start()
-        overlay.run()
-        stop.set()
-        t.join()
-    streamer.close()
+    process_lock.acquire(paths.lock_file)  # tells the trainer that the GPU is in use
+    try:
+        with open_microphone(ring):
+            t.start()
+            overlay.run()
+            stop.set()
+            t.join()
+        streamer.close()
+    finally:
+        process_lock.release(paths.lock_file)
     sessions.end_session(conn, session_id)
     log("live_stopped", ring_overruns=ring.overruns, stats=streamer.stats.summary())
 

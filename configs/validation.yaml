@@ -1,0 +1,7 @@
+# Data-validity rules for the dataset builder. Defaults are starting points: tune after
+# looking at what the validators reject on real reviewed data.
+min_duration_s: 0.5
+max_duration_s: 30.0      # Whisper context window
+max_clipping_fraction: 0.01
+min_chars_per_s: 2.0
+max_chars_per_s: 30.0

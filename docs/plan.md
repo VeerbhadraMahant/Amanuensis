@@ -92,15 +92,15 @@ Dictate real things daily (notes, messages, project logs) for 15 to 30 minutes a
 
 Start this phase once you have roughly 2 to 3 hours of reviewed speech. Expect clearer gains at 5 hours and beyond.
 
-- [ ] Dataset builder: pull reviewed utterances, validate, deduplicate, balance languages, mix in English and German replay data, write a versioned manifest (owner: `ml-training-engineer`)
-- [ ] Data validators as standalone functions with tests (duration bounds, empty text, clipping, text-length vs audio-length, spelling compliance)
-- [ ] LoRA training script for Whisper small first, config-driven, 8-bit loading, gradient checkpointing, VRAM check and dictation-process check before start
-- [ ] Merge adapter, convert to CTranslate2, parity check against merged HF model
-- [ ] Model registry: champion and challenger tracking with lineage
-- [ ] Promotion rule as a pure function reading `configs/promotion.yaml` (owner: `eval-engineer`)
-- [ ] First manual cycle on Whisper small; write up results
-- [ ] Repeat on Whisper medium if VRAM allows; compare
-- [ ] Evaluate ADR-002 (language token strategy) on the code-switched slices; revise if needed
+- [x] Dataset builder: pull reviewed utterances, validate, deduplicate, balance languages, mix in English and German replay data, write a versioned manifest (owner: `ml-training-engineer`) — training/dataset.py: SQL-level filter to reviewed utterances only, EvalLeakError on any audio hash match with the frozen set (nothing recorded), dedupe by audio hash and text+duration, seeded per-group hour caps, English/German share warning, train/val split by audio hash, versioned manifest + dataset_versions row with parent lineage. Replay mixing uses the owner's own reviewed English/German speech; it warns when that is too thin rather than inventing data.
+- [x] Data validators as standalone functions with tests (duration bounds, empty text, clipping, text-length vs audio-length, spelling compliance) — duration, empty text, clipping, chars-per-second, spelling compliance; thresholds in configs/validation.yaml are untuned defaults.
+- [x] LoRA training script for Whisper small first, config-driven, 8-bit loading, gradient checkpointing, VRAM check and dictation-process check before start — 8-bit LoRA verified on this GPU: Whisper small, batch 4, peak 2.9 GB VRAM (medium likely fits). Refuses to start if the dictation lock is live or VRAM is short; logs config, versions and history to run.json; OOM recorded as a failed run. Learned: transformers 5 needs use_reentrant=False checkpointing kwargs and writes processor_config.json.
+- [x] Merge adapter, convert to CTranslate2, parity check against merged HF model — merge in fp32 on CPU, CT2 convert, parity check (training/parity.py). Learned: faster-whisper/CT2 need a standalone preprocessor_config.json, which transformers 5 no longer writes by default. Smoke parity: WER 0.0, 4/4 exact.
+- [x] Model registry: champion and challenger tracking with lineage — registry/models.py: promote() requires a passing PromotionDecision, one transaction keeps exactly one champion, lineage() walks model -> dataset chain.
+- [x] Promotion rule as a pure function reading `configs/promotion.yaml` (owner: `eval-engineer`) — eval/promotion.py decide() + load_rules(). configs/promotion.yaml ships all-null on purpose and load_rules refuses to run until the OWNER fills it.
+- [ ] First manual cycle on Whisper small; write up results — MECHANICS ONLY: ran dataset -> train -> merge -> CT2 -> parity -> eval -> gate on 24 synthetic TTS clips (6 steps). No WER change, and the gate correctly refused. A real cycle needs real reviewed data.
+- [ ] Repeat on Whisper medium if VRAM allows; compare — needs real reviewed data.
+- [ ] Evaluate ADR-002 (language token strategy) on the code-switched slices; revise if needed — needs real reviewed code-switched data.
 
 **Exit:** at least one fine-tuned model beats the biased baseline on normalized WER for the code-switched slices without breaching the German and English tolerance, produced entirely by scripts.
 

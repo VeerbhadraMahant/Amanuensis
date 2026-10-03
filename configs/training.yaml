@@ -1,0 +1,21 @@
+# LoRA fine-tuning. Hyperparameters are untuned defaults: adjust once there is real reviewed data.
+base_model: openai/whisper-small     # target model later: openai/whisper-medium
+device: cuda
+load_in_8bit: true                   # false for CPU / tiny smoke tests
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+target_modules: [q_proj, v_proj]
+learning_rate: 0.0003
+batch_size: 4
+grad_accum: 4
+epochs: 3
+max_steps: 0                         # 0 = run by epochs
+gradient_checkpointing: true
+language: english                    # ADR-002: English token for non-German speech
+task: transcribe
+seed: 1337
+min_free_vram_gb: 5.0                # trainer refuses to start below this
+runs_dir: models/runs
+ct2_quantization: float16            # weights stored in CT2; int8 is applied at load by faster-whisper
+parity_max_wer: 0.02                 # CT2 vs merged-HF transcripts must agree within this WER

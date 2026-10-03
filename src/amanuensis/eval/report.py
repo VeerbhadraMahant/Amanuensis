@@ -41,3 +41,18 @@ def per_language_report(
             )
         )
     return out
+
+
+def build_report(
+    utts: list[Utterance],
+    variants: dict[str, str] | None,
+    terms: list[str] | None,
+    latency_p50_s: float,
+) -> dict:
+    """Full eval report: the input to the promotion gate (eval.promotion.decide)."""
+    overall = per_language_report([Utterance("all", u.ref, u.hyp) for u in utts], variants, terms)["all"]
+    return {
+        "overall": {"normalized_wer": overall["normalized_wer"], "term_accuracy": overall["term_accuracy"]},
+        "per_language": per_language_report(utts, variants, terms),
+        "latency_p50_s": latency_p50_s,
+    }

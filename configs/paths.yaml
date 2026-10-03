@@ -1,3 +1,4 @@
 db_path: data/amanuensis.db
 audio_dir: data/audio
+lock_file: data/dictation.lock
 variants_file: configs/spelling_variants.yaml   # not created yet; spellings come from docs/romanization.md
